@@ -23,7 +23,6 @@ services:
     entrypoint:
       - bash
       - -c
-    # add redis_socketio for backward compatibility
     command:
       - >
         ls -1 apps > sites/apps.txt;
@@ -31,16 +30,48 @@ services:
         bench set-config -gp db_port $$DB_PORT;
         bench set-config -g redis_cache "redis://$$REDIS_CACHE";
         bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
-        bench set-config -g redis_socketio "redis://$$REDIS_QUEUE";
+        bench set-config -g redis_socketio "redis://$$REDIS_SOCKETIO";
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
     environment:
-      DB_HOST: ${DB_HOST:-}
-      DB_PORT: ${DB_PORT:-}
-      REDIS_CACHE: ${REDIS_CACHE:-}
-      REDIS_QUEUE: ${REDIS_QUEUE:-}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_ROOT_USER: ${DB_ROOT_USER:-root}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      REDIS_CACHE: ${REDIS_CACHE:-redis-cache:6379}
+      REDIS_QUEUE: ${REDIS_QUEUE:-redis-queue:6379}
+      REDIS_SOCKETIO: ${REDIS_SOCKETIO:-redis-socketio:6379}
+      SITE_NAME: ${FRAPPE_SITE_NAME:-mysite.localhost}
       SOCKETIO_PORT: 9000
     depends_on: {}
     restart: on-failure
+
+  db:
+    image: mariadb:10.6
+    platform: linux/amd64
+    environment:
+      - MARIADB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+    volumes:
+      - db-data:/var/lib/mysql
+    restart: unless-stopped
+
+  redis-cache:
+    image: redis:6.2-alpine
+    volumes:
+      - redis-cache-data:/data
+    restart: unless-stopped
+
+  redis-queue:
+    image: redis:6.2-alpine
+    volumes:
+      - redis-queue-data:/data
+    restart: unless-stopped
+
+  redis-socketio:
+    image: redis:6.2-alpine
+    volumes:
+      - redis-socketio-data:/data
+    restart: unless-stopped
+
 
   backend:
     <<: *backend_defaults
@@ -65,6 +96,9 @@ services:
     depends_on:
       - backend
       - websocket
+    ports:
+      - "8080:8080"        # Expose nginx HTTP port
+      - "9000:9000"      # Expose socketio
 
   websocket:
     <<: [*depends_on_configurator, *customizable_image]
@@ -92,4 +126,9 @@ services:
 
 # ERPNext requires local assets access (Frappe does not)
 volumes:
+  db-data:
+  redis-cache-data:
+  redis-queue-data:
+  redis-socketio-data:
   sites:
+  logs:
